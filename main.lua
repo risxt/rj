@@ -341,21 +341,76 @@ local function is_running(pkg)
     return pid ~= "", pid
 end
 
+-- Get activity component for deep link handling
+local function get_deep_link_component(pkg)
+    -- Method 1: Query activities that handle VIEW intent with roblox scheme
+    local cmd = string.format(
+        'cmd package query-activities -a android.intent.action.VIEW -d "roblox://test" --brief 2>/dev/null | grep %s | head -1',
+        pkg
+    )
+    local result = su(cmd)
+    if result and result:find("/") then
+        return result:match("([%w%.]+/[%w%.]+)")
+    end
+    
+    -- Method 2: Fallback to dumpsys
+    cmd = string.format(
+        "dumpsys package %s | grep -E 'roblox' -A 5 -B 5 | grep '/' | head -1 | awk '{print $2}'",
+        pkg
+    )
+    result = su(cmd)
+    if result and result:find("/") then
+        return result:match("([%w%.]+/[%w%.]+)")
+    end
+    
+    return nil
+end
+
+-- Disable other Roblox packages temporarily
+local function disable_other_packages(target_pkg)
+    for _, pkg in ipairs(State.packages) do
+        if pkg ~= target_pkg then
+            su("pm disable-user --user 0 " .. pkg .. " 2>/dev/null")
+        end
+    end
+end
+
+-- Re-enable all packages
+local function enable_all_packages()
+    for _, pkg in ipairs(State.packages) do
+        su("pm enable " .. pkg .. " 2>/dev/null")
+    end
+end
+
 local function launch(pkg)
     su("am force-stop " .. pkg)
     os.execute("sleep 1")
     
-    -- Method 1: Use monkey to launch app first, then send deep link
-    -- This is more reliable for cloned apps
-    su("monkey -p " .. pkg .. " -c android.intent.category.LAUNCHER 1 2>/dev/null")
-    os.execute("sleep 2")
-    
-    -- Now send the deep link directly to the already-running app
-    local cmd = string.format(
-        'am start -a android.intent.action.VIEW -d "%s" -p %s --activity-clear-top --activity-single-top',
-        State.deep_link, pkg
-    )
-    su(cmd)
+    -- Strategy 1: Try explicit component
+    local component = get_deep_link_component(pkg)
+    if component then
+        log("Using component: " .. component)
+        local cmd = string.format(
+            'am start -n %s -a android.intent.action.VIEW -d "%s" --user 0 --activity-clear-top',
+            component, State.deep_link
+        )
+        su(cmd)
+    else
+        -- Strategy 2: Disable others temporarily
+        log("Fallback: disabling other packages")
+        disable_other_packages(pkg)
+        os.execute("sleep 0.5")
+        
+        local cmd = string.format(
+            'am start -a android.intent.action.VIEW -d "%s" -p %s --user 0 --activity-clear-top',
+            State.deep_link, pkg
+        )
+        su(cmd)
+        
+        -- Re-enable after delay
+        os.execute("sleep 2")
+        enable_all_packages()
+    end
     
     State.data[pkg].status = "launching"
     log(A.YELLOW .. "Launched " .. pkg .. A.RESET)
