@@ -383,13 +383,35 @@ local function enable_all_packages()
 end
 
 local function launch(pkg)
-    -- Don't force-stop - we want packages to stay running!
-    -- Just send the deep link
-    local cmd = string.format(
-        'am start -a android.intent.action.VIEW -d "%s" -p %s --user 0 --activity-clear-top -f 0x10000000',
+    -- Dynamic Component Discovery: Find the actual activity that handles roblox:// for this package
+    local find_cmd = string.format(
+        "cmd package query-activities --brief -a android.intent.action.VIEW -d '%s' %s 2>/dev/null | grep /",
         State.deep_link, pkg
     )
-    su(cmd)
+    local component = su(find_cmd)
+    
+    -- Clean up the component string
+    if component then
+        component = component:match("([%w%.%_]+/[%w%.%_]+)")
+    end
+    
+    if component and component:find("/") then
+        -- Use explicit intent with -n flag - bypasses app chooser 100%
+        log("Component: " .. component)
+        local cmd = string.format(
+            "am start -n %s -a android.intent.action.VIEW -d '%s' --activity-clear-top --activity-no-history --user 0",
+            component, State.deep_link
+        )
+        su(cmd)
+    else
+        -- Fallback: try with -p flag (might show chooser)
+        log("Fallback for " .. pkg)
+        local cmd = string.format(
+            "am start -a android.intent.action.VIEW -d '%s' -p %s --activity-clear-top --user 0",
+            State.deep_link, pkg
+        )
+        su(cmd)
+    end
     
     State.data[pkg].status = "launching"
     log(A.YELLOW .. "Launched " .. pkg .. A.RESET)
@@ -524,25 +546,16 @@ local function menu_auto_rejoin()
     io.write(A.HIDE)
     
     -- Initial launch with delay per instance
-    -- Strategy: For each package, only disable packages that haven't been launched yet
+    -- Now using Dynamic Component Discovery - no need to disable packages!
     for i, pkg in ipairs(State.packages) do
         log(string.format("Launching %d/%d: %s", i, #State.packages, pkg))
         draw()
         
-        -- Disable only packages that come AFTER this one (not yet launched)
-        for j = i + 1, #State.packages do
-            su("pm disable-user --user 0 " .. State.packages[j] .. " 2>/dev/null")
-        end
-        os.execute("sleep 0.5")
-        
-        -- Launch current package
+        -- Launch with explicit component (bypasses app chooser)
         launch(pkg)
         
-        -- Re-enable all packages immediately so already-launched ones stay running
-        enable_all_packages()
-        
         if i < #State.packages then
-            -- Countdown display
+            -- Short delay between launches
             for countdown = CONFIG.LAUNCH_DELAY, 1, -1 do
                 State.data[pkg].status = "wait " .. countdown .. "s"
                 draw()
