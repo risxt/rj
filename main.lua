@@ -162,7 +162,7 @@ local function inject_cookie(package_name, cookie_value)
     ]], now, CONFIG.HOST_KEY, CONFIG.COOKIE_NAME, cookie_value:gsub("'", "''"), 
         CONFIG.COOKIE_PATH, expiry, CONFIG.IS_SECURE, CONFIG.IS_HTTPONLY, now, now)
     
-    local result, ok = su(string.format('sqlite3 "%s" "%s"', db_path, sql:gsub("\n", " ")))
+    local result, ok = su(string.format('/data/data/com.termux/files/usr/bin/sqlite3 "%s" "%s"', db_path, sql:gsub("\n", " ")))
     
     if result and result ~= "" and not ok then
         print_log("ERR", "SQL Error: " .. result)
