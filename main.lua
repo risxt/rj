@@ -198,7 +198,7 @@ end
 local function menu_cookie_injector()
     clear()
     print(A.BOLD .. A.CYAN .. "╔══════════════════════════════════════╗" .. A.RESET)
-    print(A.BOLD .. A.CYAN .. "║     COOKIE INJECTOR (File Mode)      ║" .. A.RESET)
+    print(A.BOLD .. A.CYAN .. "║     COOKIE INJECTOR (Auto Mode)      ║" .. A.RESET)
     print(A.BOLD .. A.CYAN .. "╚══════════════════════════════════════╝" .. A.RESET)
     print("")
     
@@ -255,74 +255,42 @@ local function menu_cookie_injector()
     
     -- Show mapping
     print(A.BOLD .. "Cookie -> Package Mapping:" .. A.RESET)
-    for i = 1, math.max(#packages, #cookies) do
-        local pkg = packages[i] or (A.DIM .. "(no package)" .. A.RESET)
-        local cookie_preview = cookies[i] and (cookies[i]:sub(1, 30) .. "...") or (A.DIM .. "(no cookie)" .. A.RESET)
-        local status = (packages[i] and cookies[i]) and A.GREEN .. "✓" .. A.RESET or A.RED .. "✗" .. A.RESET
-        print(string.format("  %s Cookie %d -> %s", status, i, type(pkg) == "string" and pkg or pkg))
+    local count = math.min(#packages, #cookies)
+    for i = 1, count do
+        print(string.format("  %s✓%s Cookie %d -> %s", A.GREEN, A.RESET, i, packages[i]))
     end
-    
-    print("")
     
     if #cookies < #packages then
-        print_log("WARN", string.format("Cookie kurang! Ada %d package tapi hanya %d cookie", #packages, #cookies))
+        print("")
+        print_log("WARN", string.format("Cookie kurang! %d package, hanya %d cookie", #packages, #cookies))
     elseif #cookies > #packages then
-        print_log("WARN", string.format("Cookie lebih! Ada %d cookie tapi hanya %d package", #cookies, #packages))
+        print("")
+        print_log("WARN", string.format("Cookie lebih! %d cookie, hanya %d package", #cookies, #packages))
     end
     
+    -- Auto inject immediately
     print("")
-    print("[1] Inject semua (1 cookie = 1 package)")
-    print("[2] Inject 1 cookie ke SEMUA packages")
-    print("[0] Batal")
-    io.write("\nPilihan: ")
-    io.flush()
-    local choice = io.read()
+    print(A.DIM .. string.rep("-", 40) .. A.RESET)
+    print_log("INFO", "Auto-injecting " .. count .. " cookie(s)...")
+    print("")
     
-    print("")
-    if choice == "1" then
-        -- Each cookie to each package (1:1 mapping)
-        local success, failed = 0, 0
-        local count = math.min(#packages, #cookies)
-        
-        for i = 1, count do
-            print(string.format("\n[%d/%d] %s", i, count, packages[i]))
-            if inject_cookie(packages[i], cookies[i]) then
-                success = success + 1
-            else
-                failed = failed + 1
-            end
+    local success, failed = 0, 0
+    
+    for i = 1, count do
+        print(string.format("[%d/%d] %s", i, count, packages[i]))
+        if inject_cookie(packages[i], cookies[i]) then
+            success = success + 1
+        else
+            failed = failed + 1
         end
-        
         print("")
-        print(A.DIM .. string.rep("-", 40) .. A.RESET)
-        print(A.GREEN .. "✓ Success: " .. success .. A.RESET)
-        print(A.RED .. "✗ Failed: " .. failed .. A.RESET)
-        
-    elseif choice == "2" then
-        -- First cookie to ALL packages
-        if #cookies == 0 then
-            print_log("ERR", "Tidak ada cookie!")
-            pause()
-            return
-        end
-        
-        local cookie = cookies[1]
-        print_log("INFO", "Using cookie #1 for all packages")
-        
-        local success, failed = 0, 0
-        for i, pkg in ipairs(packages) do
-            print(string.format("\n[%d/%d] %s", i, #packages, pkg))
-            if inject_cookie(pkg, cookie) then
-                success = success + 1
-            else
-                failed = failed + 1
-            end
-        end
-        
-        print("")
-        print(A.DIM .. string.rep("-", 40) .. A.RESET)
-        print(A.GREEN .. "✓ Success: " .. success .. A.RESET)
-        print(A.RED .. "✗ Failed: " .. failed .. A.RESET)
+    end
+    
+    print(A.DIM .. string.rep("=", 40) .. A.RESET)
+    print(A.BOLD .. "HASIL:" .. A.RESET)
+    print(A.GREEN .. "  ✓ Success: " .. success .. A.RESET)
+    if failed > 0 then
+        print(A.RED .. "  ✗ Failed: " .. failed .. A.RESET)
     end
     
     pause()
