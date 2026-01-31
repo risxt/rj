@@ -383,34 +383,62 @@ local function enable_all_packages()
 end
 
 local function launch(pkg)
-    -- Dynamic Component Discovery: Find the actual activity that handles roblox:// for this package
-    local find_cmd = string.format(
-        "cmd package query-activities --brief -a android.intent.action.VIEW -d '%s' %s 2>/dev/null | grep /",
-        State.deep_link, pkg
-    )
-    local component = su(find_cmd)
+    local component = nil
     
-    -- Clean up the component string
-    if component then
-        component = component:match("([%w%.%_]+/[%w%.%_]+)")
+    -- Method 1: Try query-activities for this specific package
+    local result = su(string.format(
+        "cmd package query-activities --brief -a android.intent.action.VIEW -d 'roblox://test' 2>/dev/null | grep %s",
+        pkg
+    ))
+    if result and result:find("/") then
+        component = result:match("([%w%.%_]+/[%w%.%_]+)")
+        if component then log("Method1: " .. component) end
     end
     
-    if component and component:find("/") then
-        -- Use explicit intent with -n flag - bypasses app chooser 100%
-        log("Component: " .. component)
+    -- Method 2: Try dumpsys for this package
+    if not component then
+        result = su(string.format(
+            "dumpsys package %s 2>/dev/null | grep -E 'Activity.*roblox' -A 2 | grep '/' | head -1",
+            pkg
+        ))
+        if result and result:find("/") then
+            component = result:match("([%w%.%_]+/[%w%.%_]+)")
+            if component then log("Method2: " .. component) end
+        end
+    end
+    
+    -- Method 3: Try known activity patterns for Roblox clones
+    if not component then
+        local known_activities = {
+            pkg .. "/com.roblox.client.ActivitySplash",
+            pkg .. "/com.roblox.client.startup.ActivitySplash",
+            pkg .. "/.ActivitySplash",
+        }
+        for _, act in ipairs(known_activities) do
+            -- Test if activity exists
+            result = su("pm dump " .. pkg .. " 2>/dev/null | grep -i 'activitysplash' | head -1")
+            if result and result ~= "" then
+                component = known_activities[1]  -- Use first pattern
+                log("Method3: " .. component)
+                break
+            end
+        end
+    end
+    
+    -- Launch with component or fallback
+    if component then
         local cmd = string.format(
-            "am start -n %s -a android.intent.action.VIEW -d '%s' --activity-clear-top --activity-no-history --user 0",
+            "am start -n %s -a android.intent.action.VIEW -d '%s' --activity-clear-top --user 0",
             component, State.deep_link
         )
         su(cmd)
     else
-        -- Fallback: try with -p flag (might show chooser)
-        log("Fallback for " .. pkg)
-        local cmd = string.format(
+        -- Last resort: simple am start with package
+        log("Fallback: " .. pkg)
+        su(string.format(
             "am start -a android.intent.action.VIEW -d '%s' -p %s --activity-clear-top --user 0",
             State.deep_link, pkg
-        )
-        su(cmd)
+        ))
     end
     
     State.data[pkg].status = "launching"
