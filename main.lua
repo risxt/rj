@@ -383,14 +383,8 @@ local function enable_all_packages()
 end
 
 local function launch(pkg)
-    su("am force-stop " .. pkg)
-    
-    -- ALWAYS disable other packages first - most reliable method
-    log("Disabling other Roblox packages...")
-    disable_other_packages(pkg)
-    os.execute("sleep 1")  -- Wait for Android to register the change
-    
-    -- Now launch - only this package can handle roblox://
+    -- Don't force-stop - we want packages to stay running!
+    -- Just send the deep link
     local cmd = string.format(
         'am start -a android.intent.action.VIEW -d "%s" -p %s --user 0 --activity-clear-top -f 0x10000000',
         State.deep_link, pkg
@@ -399,10 +393,6 @@ local function launch(pkg)
     
     State.data[pkg].status = "launching"
     log(A.YELLOW .. "Launched " .. pkg .. A.RESET)
-    
-    -- Re-enable all packages after this one has started
-    os.execute("sleep 3")
-    enable_all_packages()
 end
 
 local function draw()
@@ -533,11 +523,23 @@ local function menu_auto_rejoin()
     
     io.write(A.HIDE)
     
-    -- Initial launch with 20s delay per instance
+    -- Initial launch with delay per instance
+    -- Strategy: For each package, only disable packages that haven't been launched yet
     for i, pkg in ipairs(State.packages) do
         log(string.format("Launching %d/%d: %s", i, #State.packages, pkg))
         draw()
+        
+        -- Disable only packages that come AFTER this one (not yet launched)
+        for j = i + 1, #State.packages do
+            su("pm disable-user --user 0 " .. State.packages[j] .. " 2>/dev/null")
+        end
+        os.execute("sleep 0.5")
+        
+        -- Launch current package
         launch(pkg)
+        
+        -- Re-enable all packages immediately so already-launched ones stay running
+        enable_all_packages()
         
         if i < #State.packages then
             -- Countdown display
