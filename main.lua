@@ -33,7 +33,7 @@ local CONFIG = {
     -- Rejoin settings
     REFRESH = 3,
     MAX_LOG = 6,
-    LAUNCH_DELAY = 20,  -- 20 detik per instance
+    LAUNCH_DELAY = 3,  -- 3 detik per instance (rapid launch)
     
     -- Cookie settings
     HOST_KEY = ".roblox.com",
