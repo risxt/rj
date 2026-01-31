@@ -407,11 +407,57 @@ local function menu_auto_rejoin()
     print(A.BOLD .. A.CYAN .. "╚══════════════════════════════════════╝" .. A.RESET)
     print("")
     
-    io.write("Paste Private Server URL: ")
-    io.flush()
-    local url = io.read()
+    -- Try to load saved PS link from file
+    local saved_url = nil
+    local ps_file = io.open("ps.txt", "r")
+    if ps_file then
+        saved_url = trim(ps_file:read("*l") or "")
+        ps_file:close()
+    end
     
-    local pid, code = parse_link(url)
+    local url = nil
+    
+    if saved_url and saved_url ~= "" then
+        -- Show saved link and ask if user wants to use it
+        print_log("INFO", "Found saved PS link:")
+        print(A.DIM .. "  " .. saved_url:sub(1, 60) .. "..." .. A.RESET)
+        print("")
+        print("[1] Gunakan link di atas")
+        print("[2] Masukkan link baru")
+        io.write("\nPilihan (1/2): ")
+        io.flush()
+        local choice = io.read()
+        
+        if choice == "2" then
+            print("")
+            io.write("Paste Private Server URL: ")
+            io.flush()
+            url = io.read()
+            -- Save new URL
+            local save_file = io.open("ps.txt", "w")
+            if save_file then
+                save_file:write(url .. "\n")
+                save_file:close()
+                print_log("OK", "Link disimpan ke ps.txt")
+            end
+        else
+            url = saved_url
+        end
+    else
+        -- No saved link, ask for new one
+        io.write("Paste Private Server URL: ")
+        io.flush()
+        url = io.read()
+        -- Save URL for next time
+        local save_file = io.open("ps.txt", "w")
+        if save_file then
+            save_file:write(url .. "\n")
+            save_file:close()
+            print_log("OK", "Link disimpan ke ps.txt")
+        end
+    end
+    
+    local pid, code = parse_link(url or "")
     if not pid or not code then
         print_log("ERR", "URL tidak valid!")
         pause()
