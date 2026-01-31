@@ -344,13 +344,19 @@ end
 local function launch(pkg)
     su("am force-stop " .. pkg)
     os.execute("sleep 1")
-    -- Use component name to force open in specific package without app chooser
-    -- Also add --activity-single-top to prevent multiple activities
+    
+    -- Method 1: Use monkey to launch app first, then send deep link
+    -- This is more reliable for cloned apps
+    su("monkey -p " .. pkg .. " -c android.intent.category.LAUNCHER 1 2>/dev/null")
+    os.execute("sleep 2")
+    
+    -- Now send the deep link directly to the already-running app
     local cmd = string.format(
-        'am start -a android.intent.action.VIEW -d "%s" -n %s/com.roblox.client.ActivitySplash --activity-single-top',
+        'am start -a android.intent.action.VIEW -d "%s" -p %s --activity-clear-top --activity-single-top',
         State.deep_link, pkg
     )
     su(cmd)
+    
     State.data[pkg].status = "launching"
     log(A.YELLOW .. "Launched " .. pkg .. A.RESET)
 end
