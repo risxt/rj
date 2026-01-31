@@ -75,10 +75,15 @@ local function exec(cmd)
 end
 
 local function su(cmd)
+    local termux_bin = "/data/data/com.termux/files/usr/bin"
+    local termux_lib = "/data/data/com.termux/files/usr/lib"
+    
+    -- Export PATH and LD_LIBRARY_PATH so Termux binaries can run and find their libraries
+    local env = string.format("export PATH=%s:$PATH; export LD_LIBRARY_PATH=%s;", termux_bin, termux_lib)
+    
     local escaped = cmd:gsub("'", "'\\''")
-    -- Include Termux PATH so binaries like sqlite3 can be found
-    local termux_path = "PATH=/data/data/com.termux/files/usr/bin:$PATH"
-    return exec("su -c '" .. termux_path .. " && " .. escaped .. "'")
+    -- Run through su with proper environment
+    return exec(string.format('su -c "%s %s"', env, escaped))
 end
 
 local function log(msg)
