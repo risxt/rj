@@ -76,7 +76,9 @@ end
 
 local function su(cmd)
     local escaped = cmd:gsub("'", "'\\''")
-    return exec("su -c '" .. escaped .. "'")
+    -- Include Termux PATH so binaries like sqlite3 can be found
+    local termux_path = "PATH=/data/data/com.termux/files/usr/bin:$PATH"
+    return exec("su -c '" .. termux_path .. " && " .. escaped .. "'")
 end
 
 local function log(msg)
