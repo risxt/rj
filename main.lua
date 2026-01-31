@@ -384,36 +384,25 @@ end
 
 local function launch(pkg)
     su("am force-stop " .. pkg)
-    os.execute("sleep 1")
     
-    -- Strategy 1: Try explicit component
-    local component = get_deep_link_component(pkg)
-    if component then
-        log("Using component: " .. component)
-        local cmd = string.format(
-            'am start -n %s -a android.intent.action.VIEW -d "%s" --user 0 --activity-clear-top',
-            component, State.deep_link
-        )
-        su(cmd)
-    else
-        -- Strategy 2: Disable others temporarily
-        log("Fallback: disabling other packages")
-        disable_other_packages(pkg)
-        os.execute("sleep 0.5")
-        
-        local cmd = string.format(
-            'am start -a android.intent.action.VIEW -d "%s" -p %s --user 0 --activity-clear-top',
-            State.deep_link, pkg
-        )
-        su(cmd)
-        
-        -- Re-enable after delay
-        os.execute("sleep 2")
-        enable_all_packages()
-    end
+    -- ALWAYS disable other packages first - most reliable method
+    log("Disabling other Roblox packages...")
+    disable_other_packages(pkg)
+    os.execute("sleep 1")  -- Wait for Android to register the change
+    
+    -- Now launch - only this package can handle roblox://
+    local cmd = string.format(
+        'am start -a android.intent.action.VIEW -d "%s" -p %s --user 0 --activity-clear-top -f 0x10000000',
+        State.deep_link, pkg
+    )
+    su(cmd)
     
     State.data[pkg].status = "launching"
     log(A.YELLOW .. "Launched " .. pkg .. A.RESET)
+    
+    -- Re-enable all packages after this one has started
+    os.execute("sleep 3")
+    enable_all_packages()
 end
 
 local function draw()
