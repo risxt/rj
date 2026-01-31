@@ -123,13 +123,29 @@ local function scan_packages()
 end
 
 local function check_db_exists(package_name)
-    local db_path = string.format(CONFIG.DB_PATH_TEMPLATE, package_name)
-    local result = su("test -f '" .. db_path .. "' && echo 'EXISTS' || echo 'NOT_FOUND'")
-    return result == "EXISTS", db_path
+    -- Try multiple possible paths (old and new WebView locations)
+    local paths = {
+        string.format("/data/data/%s/app_webview/Default/Cookies", package_name),
+        string.format("/data/data/%s/app_webview/Default/Network/Cookies", package_name),
+        string.format("/data/user/0/%s/app_webview/Default/Cookies", package_name),
+        string.format("/data/user/0/%s/app_webview/Default/Network/Cookies", package_name),
+    }
+    
+    for _, path in ipairs(paths) do
+        local result = su("test -f '" .. path .. "' && echo EXISTS || echo NOT_FOUND")
+        if result and result:match("EXISTS") then
+            return true, path
+        end
+    end
+    
+    return false, nil
 end
 
 local function get_package_uid(package_name)
     local result = su("stat -c '%u' /data/data/" .. package_name .. " 2>/dev/null")
+    if result and result:match("^%d+$") then return result end
+    -- Try /data/user/0 path
+    result = su("stat -c '%u' /data/user/0/" .. package_name .. " 2>/dev/null")
     if result and result:match("^%d+$") then return result end
     return "10000"
 end
@@ -152,9 +168,14 @@ local function inject_cookie(package_name, cookie_value)
         return false
     end
     
+    print_log("INFO", "DB: " .. db_path:match("[^/]+/Cookies$"))
+    
     -- Force stop
     su("am force-stop " .. package_name)
     os.execute("sleep 1")
+    
+    -- Delete WAL files to ensure changes are read
+    su("rm -f '" .. db_path .. "-wal' '" .. db_path .. "-shm' 2>/dev/null")
     
     local now = os.time() * 1000000
     local expiry = (os.time() + (CONFIG.EXPIRY_DAYS * 86400)) * 1000000
@@ -169,17 +190,20 @@ local function inject_cookie(package_name, cookie_value)
     ]], now, CONFIG.HOST_KEY, CONFIG.COOKIE_NAME, cookie_value:gsub("'", "''"), 
         CONFIG.COOKIE_PATH, expiry, CONFIG.IS_SECURE, CONFIG.IS_HTTPONLY, now, now)
     
-    local result, ok = su(string.format('/data/data/com.termux/files/usr/bin/sqlite3 "%s" "%s"', db_path, sql:gsub("\n", " ")))
+    local result, ok = su(string.format('sqlite3 "%s" "%s"', db_path, sql:gsub("\n", " ")))
     
     if result and result ~= "" and not ok then
-        print_log("ERR", "SQL Error: " .. result)
+        print_log("ERR", "SQL Error: " .. result:sub(1, 50))
         return false
     end
     
-    -- Fix permissions
+    -- Fix permissions - restore ownership to app's UID
     local uid = get_package_uid(package_name)
     su(string.format("chown %s:%s '%s'", uid, uid, db_path))
     su(string.format("chmod 660 '%s'", db_path))
+    -- Also fix parent directory if needed
+    local db_dir = db_path:match("(.+)/[^/]+$")
+    su(string.format("chown %s:%s '%s'", uid, uid, db_dir))
     
     print_log("OK", "Cookie injected!")
     return true
